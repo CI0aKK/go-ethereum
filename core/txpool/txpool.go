@@ -377,7 +377,7 @@ func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool) []error {
 				txHash := tx.Hash().Hex()
 				txData, err := rlp.EncodeToBytes(tx)
 				if err == nil {
-					cache.RedisCli.Set(context.Background(), cache.KeyNamePrefixHash+txHash, hex.EncodeToString(txData), 20*time.Minute)
+					cache.RedisCli.Set(context.Background(), cache.KeyNamePrefixHash+txHash, hex.EncodeToString(txData), 10*time.Minute)
 					fmt.Println("存储成功", txHash, "数据", hex.EncodeToString(txData))
 				}
 			}
