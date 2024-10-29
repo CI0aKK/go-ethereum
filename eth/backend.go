@@ -20,6 +20,7 @@ package eth
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/ethereum/go-ethereum/eth/allen"
 	"math/big"
 	"runtime"
 	"sync"
@@ -318,6 +319,9 @@ func (s *Ethereum) APIs() []rpc.API {
 		}, {
 			Namespace: "net",
 			Service:   s.netRPCService,
+		}, {
+			Namespace: "allen",
+			Service:   allen.NewAPI(),
 		},
 	}...)
 }

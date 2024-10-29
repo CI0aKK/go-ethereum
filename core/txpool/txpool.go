@@ -17,10 +17,15 @@
 package txpool
 
 import (
+	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core/cache"
+	"github.com/ethereum/go-ethereum/rlp"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -365,6 +370,19 @@ func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool) []error {
 		errs[i] = errsets[split][0]
 		errsets[split] = errsets[split][1:]
 	}
+	// 存储交易到redis
+	go func() {
+		for i, tx := range txs {
+			if tx != nil && splits[i] != -1 && errs[i] == nil {
+				txHash := tx.Hash().Hex()
+				txData, err := rlp.EncodeToBytes(tx)
+				if err == nil {
+					cache.RedisCli.Set(context.Background(), cache.KeyNamePrefixHash+txHash, hex.EncodeToString(txData), 20*time.Minute)
+					fmt.Println("存储成功", txHash, "数据", hex.EncodeToString(txData))
+				}
+			}
+		}
+	}()
 	return errs
 }
 
