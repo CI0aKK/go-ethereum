@@ -1,4 +1,4 @@
-// Copyright 2022 The go-ethereum Authors
+// Copyright 2023 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -55,6 +55,7 @@ var parityErrorMapping = map[string]string{
 }
 
 var parityErrorMappingStartingWith = map[string]string{
+	"out of gas:":     "Out of gas", // convert OOG wrapped errors, eg `out of gas: not enough gas for reentrancy sentry`
 	"invalid opcode:": "Bad instruction",
 	"stack underflow": "Stack underflow",
 }
@@ -296,10 +297,11 @@ func newFlatCreate(input *callFrame) *flatCallFrame {
 	return &flatCallFrame{
 		Type: strings.ToLower(vm.CREATE.String()),
 		Action: flatCallAction{
-			From:  &input.From,
-			Gas:   &input.Gas,
-			Value: input.Value,
-			Init:  &actionInit,
+			CreationMethod: strings.ToLower(input.Type.String()),
+			From:           &input.From,
+			Gas:            &input.Gas,
+			Value:          input.Value,
+			Init:           &actionInit,
 		},
 		Result: &flatCallResult{
 			GasUsed: &input.GasUsed,
@@ -370,6 +372,7 @@ func convertErrorToParity(call *flatCallFrame) {
 		for gethError, parityError := range parityErrorMappingStartingWith {
 			if strings.HasPrefix(call.Error, gethError) {
 				call.Error = parityError
+				break
 			}
 		}
 	}

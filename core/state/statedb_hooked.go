@@ -150,11 +150,15 @@ func (s *hookedStateDB) Snapshot() int {
 }
 
 func (s *hookedStateDB) AddPreimage(hash common.Hash, bytes []byte) {
-	s.inner.Snapshot()
+	s.inner.AddPreimage(hash, bytes)
 }
 
 func (s *hookedStateDB) Witness() *stateless.Witness {
 	return s.inner.Witness()
+}
+
+func (s *hookedStateDB) AccessEvents() *AccessEvents {
+	return s.inner.AccessEvents()
 }
 
 func (s *hookedStateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
@@ -175,18 +179,26 @@ func (s *hookedStateDB) AddBalance(addr common.Address, amount *uint256.Int, rea
 	return prev
 }
 
-func (s *hookedStateDB) SetNonce(address common.Address, nonce uint64) {
-	s.inner.SetNonce(address, nonce)
-	if s.hooks.OnNonceChange != nil {
-		s.hooks.OnNonceChange(address, nonce-1, nonce)
+func (s *hookedStateDB) SetNonce(address common.Address, nonce uint64, reason tracing.NonceChangeReason) {
+	prev := s.inner.GetNonce(address)
+	s.inner.SetNonce(address, nonce, reason)
+	if s.hooks.OnNonceChangeV2 != nil {
+		s.hooks.OnNonceChangeV2(address, prev, nonce, reason)
+	} else if s.hooks.OnNonceChange != nil {
+		s.hooks.OnNonceChange(address, prev, nonce)
 	}
 }
 
-func (s *hookedStateDB) SetCode(address common.Address, code []byte) {
-	s.inner.SetCode(address, code)
+func (s *hookedStateDB) SetCode(address common.Address, code []byte) []byte {
+	prev := s.inner.SetCode(address, code)
 	if s.hooks.OnCodeChange != nil {
-		s.hooks.OnCodeChange(address, types.EmptyCodeHash, nil, crypto.Keccak256Hash(code), code)
+		prevHash := types.EmptyCodeHash
+		if len(prev) != 0 {
+			prevHash = crypto.Keccak256Hash(prev)
+		}
+		s.hooks.OnCodeChange(address, prevHash, prev, crypto.Keccak256Hash(code), code)
 	}
+	return prev
 }
 
 func (s *hookedStateDB) SetState(address common.Address, key common.Hash, value common.Hash) common.Hash {
@@ -198,22 +210,46 @@ func (s *hookedStateDB) SetState(address common.Address, key common.Hash, value 
 }
 
 func (s *hookedStateDB) SelfDestruct(address common.Address) uint256.Int {
-	prev := s.inner.SelfDestruct(address)
-	if !prev.IsZero() {
-		if s.hooks.OnBalanceChange != nil {
-			s.hooks.OnBalanceChange(address, prev.ToBig(), new(big.Int), tracing.BalanceDecreaseSelfdestruct)
-		}
+	var prevCode []byte
+	var prevCodeHash common.Hash
+
+	if s.hooks.OnCodeChange != nil {
+		prevCode = s.inner.GetCode(address)
+		prevCodeHash = s.inner.GetCodeHash(address)
 	}
+
+	prev := s.inner.SelfDestruct(address)
+
+	if s.hooks.OnBalanceChange != nil && !prev.IsZero() {
+		s.hooks.OnBalanceChange(address, prev.ToBig(), new(big.Int), tracing.BalanceDecreaseSelfdestruct)
+	}
+
+	if s.hooks.OnCodeChange != nil && len(prevCode) > 0 {
+		s.hooks.OnCodeChange(address, prevCodeHash, prevCode, types.EmptyCodeHash, nil)
+	}
+
 	return prev
 }
 
 func (s *hookedStateDB) SelfDestruct6780(address common.Address) (uint256.Int, bool) {
-	prev, changed := s.inner.SelfDestruct6780(address)
-	if !prev.IsZero() && changed {
-		if s.hooks.OnBalanceChange != nil {
-			s.hooks.OnBalanceChange(address, prev.ToBig(), new(big.Int), tracing.BalanceDecreaseSelfdestruct)
-		}
+	var prevCode []byte
+	var prevCodeHash common.Hash
+
+	if s.hooks.OnCodeChange != nil {
+		prevCodeHash = s.inner.GetCodeHash(address)
+		prevCode = s.inner.GetCode(address)
 	}
+
+	prev, changed := s.inner.SelfDestruct6780(address)
+
+	if s.hooks.OnBalanceChange != nil && changed && !prev.IsZero() {
+		s.hooks.OnBalanceChange(address, prev.ToBig(), new(big.Int), tracing.BalanceDecreaseSelfdestruct)
+	}
+
+	if s.hooks.OnCodeChange != nil && changed && len(prevCode) > 0 {
+		s.hooks.OnCodeChange(address, prevCodeHash, prevCode, types.EmptyCodeHash, nil)
+	}
+
 	return prev, changed
 }
 
